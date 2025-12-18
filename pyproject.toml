@@ -5,21 +5,19 @@ build-backend = 'setuptools.build_meta'
 requires = ['setuptools>=61.2']
 
 [project]
-name = "miblab-dl"
+name = "miblab-plot"
 version = "0.0.1"
 dependencies = [
-  'importlib-resources>=1.1.0',
+  'pillow',
   'numpy',
-  'nibabel',
-  'miblab[data]',
-  'nnunetv2',
+  'matplotlib',
+  'tqdm',
 ]
 # optional information
-description = "Python API for miblab's trained deep-learning models"
+description = "Plotting utilities for medical images"
 readme = "README.md"
 authors = [
   { name = "Steven Sourbron", email = "s.sourbron@sheffield.ac.uk" },
-  { name = "Joao Periquito", email = "j.s.periquito@sheffield.ac.uk" },
 ]
 license = "Apache-2.0"
 classifiers = [
@@ -41,25 +39,12 @@ keywords = [
   'python', 
   "medical imaging",  
   "MRI",
-  "deep learning",
 ]
 
 
 [project.urls]
 "Homepage" = "https://miblab.org/"
-"Source Code" = "https://github.com/openmiblab/miblab-dl"
-
-[project.optional-dependencies]
-dev = [
-  'dbdicom',
-  'miblab[data]',
-  'pytest',
-  'pytest-cov',
-  'build',
-  'twine',
-  'autopep8',
-  'pycodestyle',
-]
+"Source Code" = "https://github.com/openmiblab/miblab-plot"
 
 [tool.setuptools]
 # ...
