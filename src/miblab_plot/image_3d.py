@@ -2,9 +2,6 @@ from math import ceil
 
 from PIL import Image
 import numpy as np
-
-
-import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -12,18 +9,18 @@ from tqdm import tqdm
 
 
 
-def get_distinct_colors(rois, colormap='jet'):
+def get_distinct_colors(rois, colormap='jet', opacity=0.6):
     if len(rois)==1:
-        colors = [[1, 0, 0, 0.6]]
+        colors = [[1, 0, 0, opacity]]
     elif len(rois)==2:
-        colors = [[1, 0, 0, 0.6], [0, 1, 0, 0.6]]
+        colors = [[1, 0, 0, opacity], [0, 1, 0, opacity]]
     elif len(rois)==3:
-        colors = [[1, 0, 0, 0.6], [0, 1, 0, 0.6], [0, 0, 1, 0.6]]
+        colors = [[1, 0, 0, opacity], [0, 1, 0, opacity], [0, 0, 1, opacity]]
     else:
         n = len(rois)
         #cmap = cm.get_cmap(colormap, n)
         cmap = matplotlib.colormaps[colormap]
-        colors = [cmap(i)[:3] + (0.6,) for i in np.linspace(0, 1, n)]  # Set alpha to 0.6 for transparency
+        colors = [cmap(i)[:3] + (opacity,) for i in np.linspace(0, 1, n)]
 
     return colors
 
@@ -37,6 +34,7 @@ def mosaic_overlay(
         margin=None,
         vmin=None,
         vmax=None,
+        opacity=0.6,
     ):
 
     # Set defaults color window
@@ -46,7 +44,7 @@ def mosaic_overlay(
         vmax=np.mean(img) + 2 * np.std(img)
 
     # Define RGBA colors (R, G, B, Alpha) — alpha controls transparency
-    colors = get_distinct_colors(rois, colormap=colormap)
+    colors = get_distinct_colors(rois, colormap=colormap, opacity=opacity)
 
     # Get all masks as boolean arrays
     masks = [m.astype(bool) for m in rois.values()]
