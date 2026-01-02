@@ -25,12 +25,142 @@ def get_distinct_colors(rois, colormap='jet', opacity=0.6):
     return colors
 
 
+def mosaic_checkerboard(fixed, coreg, file, normalize=False, square_size=32, aspect_ratio=1.8, vmin=None, vmax=None):
+
+    fixed = np.array(fixed)
+    coreg = np.array(coreg)
+
+    if fixed.shape != coreg.shape:
+        raise ValueError("Input arrays must have the same shape")
+    
+    if normalize:
+        fixed = _normalize(fixed)
+        coreg = _normalize(coreg)
+        # fixed = (fixed - fixed.min()) / (fixed.max() - fixed.min())
+        # coreg = (coreg - coreg.min()) / (coreg.max() - coreg.min())
+
+    # Set defaults color window
+    if vmin is None:
+        vmin=np.percentile(np.concatenate([fixed, coreg]), 5)
+    if vmax is None:
+        vmax=np.percentile(np.concatenate([fixed, coreg]), 95)
+
+    # Determine number of rows and columns
+    # c*r = n -> c=n/r
+    # c*w / r*h = a -> w*n/r = a*r*h -> (w*n) / (a*h) = r**2
+    width = fixed.shape[0]
+    height = fixed.shape[1]
+    n_mosaics = fixed.shape[2]
+    nrows = int(np.round(np.sqrt((width*n_mosaics)/(aspect_ratio*height))))
+    ncols = int(np.ceil(n_mosaics/nrows))
+
+    # Set up figure 
+    fig, ax = plt.subplots(
+        nrows=nrows, 
+        ncols=ncols, 
+        gridspec_kw = {'wspace':0, 'hspace':0}, 
+        figsize=(ncols*width/max([width,height]), nrows*height/max([width,height])),
+        dpi=300,
+    )
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    # Build figure
+    i = 0
+    for row in tqdm(ax, desc='Building png'):
+        for col in row:
+
+            col.set_xticklabels([])
+            col.set_yticklabels([])
+            col.set_aspect('equal')
+            col.axis("off")
+
+            # Display the background image
+            if i < n_mosaics:
+                img = checkerboard(fixed[:,:,i], coreg[:,:,i], square_size)
+                col.imshow(
+                    img.T, 
+                    cmap='gray', 
+                    interpolation='none', 
+                    vmin=vmin, 
+                    vmax=vmax,
+                )
+
+            i += 1
+
+    # fig.suptitle('Mask overlay', fontsize=14)
+    fig.savefig(file, bbox_inches='tight', pad_inches=0)
+    plt.close()
+
+
+
+def _normalize(x: np.ndarray) -> np.ndarray:
+    """
+    Normalize an array so that median = 0 and IQR = 1.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Input array (any shape)
+
+    Returns
+    -------
+    np.ndarray
+        Normalized array
+    """
+    x = np.asarray(x, dtype=float)
+
+    q25, q50, q75 = np.percentile(x, [25, 50, 75])
+    iqr = q75 - q25
+
+    if iqr == 0:
+        raise ValueError("IQR is zero; cannot normalize")
+
+    return (x - q50) / iqr
+
+
+
+def checkerboard(fixed: np.ndarray, coreg: np.ndarray, square_size: int) -> np.ndarray:
+    """
+    Creates a checkerboard pattern from two 2D arrays.
+
+    Parameters
+    ----------
+    fixed : np.ndarray
+        The first 2D array (e.g., fixed image)
+    coreg : np.ndarray
+        The second 2D array (e.g., coregistered image)
+        Must have the same shape as `fixed`.
+    square_size : int
+        The size of each checkerboard square in pixels.
+
+    Returns
+    -------
+    np.ndarray
+        Checkerboard array combining `fixed` and `coreg`.
+    """
+    if fixed.shape != coreg.shape:
+        raise ValueError("Input arrays must have the same shape")
+    
+    rows, cols = fixed.shape
+    
+    # Create a boolean checkerboard mask
+    row_blocks = np.arange(rows) // square_size
+    col_blocks = np.arange(cols) // square_size
+    mask = (row_blocks[:, None] + col_blocks[None, :]) % 2 == 0  # True = use fixed
+    
+    # Build the checkerboard
+    checker = np.where(mask, fixed, coreg)
+    
+    return checker
+
+
+
 def mosaic_overlay(
         img, 
         rois, 
         file, 
         colormap='tab20', 
-        aspect_ratio=16/9, 
+        aspect_ratio=1.8, 
         margin=None,
         vmin=None,
         vmax=None,
