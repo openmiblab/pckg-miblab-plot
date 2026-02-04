@@ -84,7 +84,7 @@ Creating a new release (from a fork)
 
 Creating a PyPi release
 -----------------------
-In the terminal, cd to the /miblab-package directory, and:
+In the terminal, cd to the /miblab-plot directory, and:
 
 >>> python -m build
 >>> twine upload dist/*

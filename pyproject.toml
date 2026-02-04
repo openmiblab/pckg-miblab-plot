@@ -6,12 +6,17 @@ requires = ['setuptools>=61.2']
 
 [project]
 name = "miblab-plot"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
   'pillow',
   'numpy',
   'matplotlib',
   'tqdm',
+  'pyvista',
+  'scikit-image',
+  'moviepy',
+  'dbdicom',
+  'zarr',
 ]
 # optional information
 description = "Plotting utilities for medical images"
