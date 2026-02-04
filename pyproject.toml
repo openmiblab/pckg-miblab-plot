@@ -18,6 +18,7 @@ dependencies = [
   'dbdicom',
   'zarr',
 ]
+
 # optional information
 description = "Plotting utilities for medical images"
 readme = "README.md"
@@ -49,7 +50,7 @@ keywords = [
 
 [project.urls]
 "Homepage" = "https://miblab.org/"
-"Source Code" = "https://github.com/openmiblab/miblab-plot"
+"Source Code" = "https://github.com/openmiblab/pckg-miblab-plot"
 
 [tool.setuptools]
 # ...
