@@ -1,7 +1,6 @@
 import os
-from pathlib import Path
 from typing import Union
-import gc
+import platform
 
 import numpy as np
 from tqdm import tqdm
@@ -10,25 +9,28 @@ import dbdicom as db
 import zarr
 
 import miblab_ssa as ssa
-import platform
 
 
 def setup_rendering_env():
-    current_os = platform.system().lower()
-    # On Linux, check for DISPLAY. On Windows/Mac, we usually assume a display exists.
-    is_headless = (os.environ.get("DISPLAY") is None) if current_os == "linux" else False
-    
-    if is_headless:
-        try:
-            pv.start_xvfb()
-        except Exception:
-            pass
 
-    # IMPORTANT: We want to ALLOW off-screen rendering even on Windows
-    # So we don't force pv.OFF_SCREEN to be False just because we have a screen.
-    pv.OFF_SCREEN = True 
-    
-    print(f"OS: {current_os} | Headless: {is_headless} | Off-screen: {pv.OFF_SCREEN}")
+    # Default is no interactive rendering
+    pv.OFF_SCREEN = True
+
+    current_os = platform.system().lower()
+    if current_os == "linux":
+        
+        # 1. Prefer OSMesa for headless Linux (avoids the Xvfb requirement)
+        # This tells PyVista to use the software-based buffer provided by the Mesa module
+        if hasattr(pv, 'set_jupyter_backend'):
+            pv.set_jupyter_backend('static')
+            
+        # 2. Environment variables to bypass X11 requirements
+        os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+        os.environ['PYVISTA_OFF_SCREEN'] = 'true'
+        
+        print("Linux Cluster: OSMesa/Software rendering enabled.")
+
+
 
 setup_rendering_env()
 

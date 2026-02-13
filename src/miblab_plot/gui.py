@@ -420,7 +420,7 @@ def display_two_kidneys(kidney1, kidney2,
     centroid_1, axes_1 = compute_principal_axes(kidney1, kidney1_voxel_size)
     centroid_2, axes_2 = compute_principal_axes(kidney2, kidney2_voxel_size)
 
-    plotter = pv.Plotter(window_size=(1000,600), shape=(1,2))
+    plotter = pv.Plotter(window_size=(1000,600), shape=(1,2), off_screen=False)
     plotter.background_color = 'white'
 
     # Original
