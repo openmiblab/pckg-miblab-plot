@@ -18,11 +18,7 @@ def setup_rendering_env():
 
     current_os = platform.system().lower()
     if current_os == "linux":
-        
-        # 1. Prefer OSMesa for headless Linux (avoids the Xvfb requirement)
-        # This tells PyVista to use the software-based buffer provided by the Mesa module
-        if hasattr(pv, 'set_jupyter_backend'):
-            pv.set_jupyter_backend('static')
+    
             
         # 2. Environment variables to bypass X11 requirements
         os.environ['QT_QPA_PLATFORM'] = 'offscreen'
