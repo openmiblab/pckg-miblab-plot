@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Union
+import gc
 
 import numpy as np
 from tqdm import tqdm
@@ -9,6 +10,27 @@ import dbdicom as db
 import zarr
 
 import miblab_ssa as ssa
+import platform
+
+
+def setup_rendering_env():
+    current_os = platform.system().lower()
+    # On Linux, check for DISPLAY. On Windows/Mac, we usually assume a display exists.
+    is_headless = (os.environ.get("DISPLAY") is None) if current_os == "linux" else False
+    
+    if is_headless:
+        try:
+            pv.start_xvfb()
+        except Exception:
+            pass
+
+    # IMPORTANT: We want to ALLOW off-screen rendering even on Windows
+    # So we don't force pv.OFF_SCREEN to be False just because we have a screen.
+    pv.OFF_SCREEN = True 
+    
+    print(f"OS: {current_os} | Headless: {is_headless} | Off-screen: {pv.OFF_SCREEN}")
+
+setup_rendering_env()
 
 
 def mosaic_masks_dcm(masks, imagefile, labels=None, view_vector=(1, 0, 0)):
@@ -23,7 +45,13 @@ def mosaic_masks_dcm(masks, imagefile, labels=None, view_vector=(1, 0, 0)):
     nrows = int(np.ceil(np.sqrt((width*n_mosaics)/(aspect_ratio*height))))
     ncols = int(np.ceil(n_mosaics/nrows))
 
-    plotter = pv.Plotter(window_size=(ncols*width, nrows*height), shape=(nrows, ncols), border=False, off_screen=True)
+    plotter = pv.Plotter(
+        window_size=(ncols*width, nrows*height), 
+        shape=(nrows, ncols), 
+        border=False, 
+        # off_screen=True,
+        off_screen=pv.OFF_SCREEN,
+    )
     plotter.background_color = 'white'
 
     row = 0
@@ -80,7 +108,8 @@ def rotating_masks_grid(
             window_size=(ncols*width, nrows*height), 
             shape=(nrows, ncols), 
             border=False, 
-            off_screen=True,
+            # off_screen=True,
+            off_screen=pv.OFF_SCREEN,
         )
         plotter.background_color = 'white'
 
@@ -119,68 +148,6 @@ def rotating_masks_grid(
         plotter.close() # CRITICAL: Releases the GPU and RAM buffers
         del plotter
 
-# def rotating_masks_grid(
-#         dir_output:str, 
-#         masks:Union[zarr.Array, np.ndarray], 
-#         labels:np.ndarray=None,
-#         nviews=25,
-# ):
-#     # masks: (cols, rows) + 3d shape
-#     # labels: (cols, rows)
-#     # Plot settings
-#     width = 150
-#     height = 150
-
-#     # Define view points
-#     angles = np.linspace(0, 2*np.pi, nviews)
-#     dirs = [(np.cos(a), np.sin(a), 0.0) for a in angles] # rotate around z
-#     dirs += [(np.cos(a), 0.0, np.sin(a)) for a in angles] # rotate around y
-
-#     # Count nr of mosaics
-#     ncols = masks.shape[0]
-#     nrows = masks.shape[1]
-
-#     plotters = {}
-#     for i, vec in enumerate(dirs):
-#         plotters[i] = pv.Plotter(
-#             window_size=(ncols*width, nrows*height), 
-#             shape=(nrows, ncols), 
-#             border=False, 
-#             off_screen=True,
-#         )
-#         plotters[i].background_color = 'white'
-
-#     for row in tqdm(range(nrows), desc=f'Building mosaic'):
-#         for col in range(ncols):
-
-#             # Load data once
-#             mask_norm = masks[col, row, ...]
-
-#             orig_vol = pv.wrap(mask_norm.astype(float))
-#             orig_vol.spacing = [1.0, 1.0, 1.0]
-#             orig_surface = orig_vol.contour(isosurfaces=[0.5])
-
-#             prev_up = None
-#             for i, vec in enumerate(dirs):
-#                 # Camera position
-#                 distance = orig_surface.length * 2.0  # controls zoom
-#                 center = list(orig_surface.center)
-#                 pos = center + distance * np.array(vec) # vec = direction
-#                 up = _camera_up_from_direction(vec, prev_up)
-#                 prev_up = up
-
-#                 # Set up plotter
-#                 plotters[i].subplot(row, col)
-#                 if labels is not None:
-#                     plotters[i].add_text(labels[col, row], font_size=6)
-#                 plotters[i].add_mesh(orig_surface, color='lightblue', opacity=1.0, style='surface')
-#                 plotters[i].camera_position = [pos, center, up]
-
-#     for i, vec in tqdm(enumerate(dirs), desc='Saving mosaics..'):
-#         file = os.path.join(dir_output, f"mosaic_{i:03d}.png")
-#         os.makedirs(Path(file).parent, exist_ok=True)
-#         plotters[i].screenshot(file)
-#         plotters[i].close()
 
 
 
@@ -190,6 +157,7 @@ def rotating_mosaics_da(dir_output, masks:list, labels=None, chunksize=None, nvi
         labels = [str(i) for i in range(len(masks))]
     if chunksize is None:
         chunksize = len(masks)
+    os.makedirs(dir_output, exist_ok=True)
 
     # Split into numbered chunks
     def chunk_list(lst, size):
@@ -211,78 +179,70 @@ def rotating_mosaics_da(dir_output, masks:list, labels=None, chunksize=None, nvi
         directions = {vec: os.path.join(dir_output, name) for name, vec in zip(names, dirs)}
         multiple_mosaic_masks_da(mask_chunk[1], directions, label_chunk[1], columns=columns, rows=rows)
         
-
-def multiple_mosaic_masks_da(masks:list, directions:dict, labels, columns=None, rows=None):
-    # masks - list of dask arrays
+def multiple_mosaic_masks_da(masks: list, directions: dict, labels, columns=None, rows=None):
     # Plot settings
+    width, height = 150, 150
     aspect_ratio = 16/9
-    width = 150
-    height = 150
 
-    # Count nr of mosaics
     n_mosaics = len(masks)
-    if columns is None:
-        ncols = int(np.ceil(np.sqrt((height*n_mosaics)/(aspect_ratio*width))))
-    else:
-        ncols = columns
-    if rows is None:
-        nrows = int(np.ceil(n_mosaics/ncols))
-    else:
-        nrows = rows
-    # nrows = int(np.ceil(np.sqrt((width*n_mosaics)/(aspect_ratio*height))))
-    # ncols = int(np.ceil(n_mosaics/nrows))
+    ncols = columns if columns else int(np.ceil(np.sqrt((height*n_mosaics)/(aspect_ratio*width))))
+    nrows = rows if rows else int(np.ceil(n_mosaics/ncols))
 
-    plotters = {}
-    for vec in directions.keys():
-        plotters[vec] = pv.Plotter(
+    # We loop through DIRECTIONS first. This keeps only ONE plotter in RAM at a time.
+    # To avoid re-computing the Spline/RBF surface 50 times per mask, 
+    # we pre-calculate the surfaces once.
+    
+    surfaces = []
+    for mask_series in tqdm(masks, desc="Pre-calculating Surfaces"):
+        # Your Spline/RBF smoothing
+        #mask_norm = ssa.sdf_ft.smooth_mask(mask_series[:].astype(bool), order=16)
+        mask_norm = mask_series[:].astype(bool)
+        
+        vol = pv.wrap(mask_norm.astype(np.float32))
+        vol.spacing = [1.0, 1.0, 1.0]
+        surf = vol.contour(isosurfaces=[0.5])
+        surfaces.append(surf)
+        del vol # Clear RAM
+    
+    # Now render each view angle
+    for vec, file_path in tqdm(directions.items(), desc="Rendering Views"):
+        plotter = pv.Plotter(
             window_size=(ncols*width, nrows*height), 
             shape=(nrows, ncols), 
             border=False, 
-            off_screen=True,
+            off_screen=pv.OFF_SCREEN,
         )
-        plotters[vec].background_color = 'white'
+        plotter.background_color = 'white'
 
-    row = 0
-    col = 0
-    for mask_label, mask_series in tqdm(zip(labels, masks), total=len(labels), desc=f'Building mosaic'):
+        for i, surf in enumerate(surfaces):
+            row, col = divmod(i, ncols)
+            if row >= nrows: break # Safety break
 
-        # Load data once
-        mask_norm = ssa.sdf_ft.smooth_mask(mask_series[:].astype(bool), order=16)
-
-        orig_vol = pv.wrap(mask_norm.astype(float))
-        orig_vol.spacing = [1.0, 1.0, 1.0]
-        orig_surface = orig_vol.contour(isosurfaces=[0.5])
-
-        prev_up = None
-        for vec in directions.keys():
-            # Camera position
-            distance = orig_surface.length * 2.0  # controls zoom
-            center = list(orig_surface.center)
-            pos = center + distance * np.array(vec) # vec = direction
-            up = _camera_up_from_direction(vec, prev_up)
-            prev_up = up
-
-            # Set up plotter
-            plotter = plotters[vec]
-            plotter.subplot(row,col)
-            if labels is not None:
-                plotter.add_text(mask_label, font_size=6)
-            plotter.add_mesh(orig_surface, color='lightblue', opacity=1.0, style='surface')
-            plotter.camera_position = [pos, center, up]
+            # Camera Position
+            distance = surf.length * 2.0
+            center = list(surf.center)
+            pos = center + distance * np.array(vec)
             
-            # plotter.camera_position = 'iso'
-            # plotter.view_vector(vec)  # rotate 180° around vertical axis
+            # Using a simple up vector (0,0,1) is usually more stable across views
+            # unless you have a specific requirement for the _camera_up_from_direction
+            up = (0, 0, 1) 
 
-        if col == ncols-1:
-            col = 0
-            row += 1
-        else:
-            col += 1
-    
-    for vec, file in directions.items():
-        # plotters[vec].render()
-        plotters[vec].screenshot(file)
-        plotters[vec].close()
+            plotter.subplot(row, col)
+            if labels is not None:
+                plotter.add_text(labels[i], font_size=6, color='black')
+            
+            plotter.add_mesh(surf, color='lightblue', smooth_shading=True)
+            plotter.camera_position = [pos, center, up]
+
+        # 1. Initialize the window in the background
+        plotter.show(auto_close=False, interactive=False, interactive_update=True)
+        
+        # 2. Capture the pixels
+        plotter.screenshot(file_path)
+        
+        # 3. Destroy the plotter immediately
+        plotter.close()
+
 
 
 def rotating_mosaics_npz(dir_output, masks:list, labels=None, chunksize=None, nviews=25, columns=None, rows=None):
@@ -338,7 +298,8 @@ def multiple_mosaic_masks_npz(masks, directions:dict, labels, columns=None, rows
             window_size=(ncols*width, nrows*height), 
             shape=(nrows, ncols), 
             border=False, 
-            off_screen=True,
+            # off_screen=True,
+            off_screen=pv.OFF_SCREEN,
         )
         plotters[vec].background_color = 'white'
 
@@ -443,7 +404,8 @@ def mosaic_masks_npz(masks, imagefile, labels=None, view_vector=(1, 0, 0)):
         window_size=(ncols*width, nrows*height), 
         shape=(nrows, ncols), 
         border=False, 
-        off_screen=True,
+        # off_screen=True,
+        off_screen=pv.OFF_SCREEN,
     )
     plotter.background_color = 'white'
 
@@ -493,7 +455,8 @@ def mosaic_features_npz(features, imagefile, labels=None, view_vector=(1, 0, 0))
         window_size=(ncols*width, nrows*height), 
         shape=(nrows, ncols), 
         border=False, 
-        off_screen=True,
+        # off_screen=True,
+        off_screen=pv.OFF_SCREEN,
     )
     plotter.background_color = 'white'
 
